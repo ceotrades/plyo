@@ -1,4 +1,8 @@
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+
 const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const APIFY_API_KEY = Deno.env.get('APIFY_API_KEY') ?? '';
 
 const SYSTEM_PROMPT = `You are a fitness coach assistant. Extract all exercises from this workout transcript into structured JSON.
@@ -44,6 +48,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Every call spends Apify and OpenAI credit, so only signed-in users get one.
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return jsonError('Missing Authorization header', 401);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !user) return jsonError('Unauthorized', 401);
+
     const { url } = await req.json();
     if (!url || typeof url !== 'string') return jsonError('url is required', 400);
 
@@ -67,17 +80,24 @@ Deno.serve(async (req: Request) => {
 
 // ── URL resolution ─────────────────────────────────────────────────────────────
 
+// Match on the parsed hostname. A substring check would accept
+// https://anything.example/?x=tiktok.com and pass it to the paid scrapers.
+function hostIs(url: string, domains: string[]): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return domains.some((d) => host === d || host.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
+}
+
 async function resolveMediaUrl(url: string): Promise<ResolvedMedia> {
-  if (
-    url.includes('tiktok.com') ||
-    url.includes('vm.tiktok.com') ||
-    url.includes('vt.tiktok.com')
-  ) {
+  if (hostIs(url, ['tiktok.com'])) {
     const mediaUrl = await resolveTikTok(url);
     return { mediaUrl, mimeType: 'video/mp4' };
   }
 
-  if (url.includes('instagram.com') || url.includes('instagr.am')) {
+  if (hostIs(url, ['instagram.com', 'instagr.am'])) {
     return resolveInstagram(url);
   }
 

@@ -22,7 +22,7 @@ Expo and React Native with expo-router for navigation. Supabase handles auth, th
 - `generate-calendar` builds the training plan from what has been extracted
 - `delete-account` handles account deletion properly, including the data
 
-Secrets live in environment variables, never in the repo.
+Service keys (OpenAI, Apify, the Supabase service role) live in environment variables. The only key in the repo is Supabase's public anon key, which ships inside every Supabase app by design. Row-level security decides what it can read. Every edge function checks the caller's session before it spends anything.
 
 ## Stack
 
